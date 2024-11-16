@@ -80,7 +80,6 @@ impl Chip8 {
     fn jmp(&mut self, addr: u16) {
         println!("jmp({:X})", addr);
         self.pc = addr;
-        // println!("Data at jmp ({:X})", self.memory[self.pc as usize]);
     }
     
     fn call(&mut self, addr: u16) {
