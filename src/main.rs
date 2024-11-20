@@ -35,6 +35,7 @@ struct Chip8 {
     sp: u8,
     pc: u16,
     opcode: u16,
+    keypad: [bool; 16],
 }
 
 impl Chip8 {
@@ -50,6 +51,7 @@ impl Chip8 {
             sp: 0,
             pc: MEMORY_OFFSET,
             opcode: 0,
+            keypad: [false; 16],
         }
     }
 
@@ -87,11 +89,16 @@ impl Chip8 {
     }
     
     fn call_sub(&mut self, addr: u16) {
-        println!("call_sub()")
+        println!("call_sub()");
+        self.pc = addr;
+        self.stack[self.sp as usize] = self.pc;
+        self.sp += 1;
     }
     
     fn ret(&mut self) {
-        println!("ret()")
+        println!("ret()");
+        self.pc = self.stack[self.sp as usize];
+        self.sp -= 1;
     }
     
     fn set_reg(&mut self, reg: u8, val: u8) {
@@ -116,13 +123,134 @@ impl Chip8 {
             self.pc += 2;
         }
     }
+
+    fn ne(&mut self, reg: u8, val: u8) {
+        println!("ne({:X}, {:X})", reg, val);
+        if self.registers[reg as usize] != val {
+            self.pc += 2;
+        }
+    }
+
+    fn reg_eq(&mut self, vx: u8, vy: u8) {
+        println!("reg_eq({:X}, {:X})", vx, vy);
+        if self.registers[vx as usize] == self.registers[vy as usize] {
+            self.pc += 2;
+        }
+    }
+
+    fn reg_cp(&mut self, vx: u8, vy: u8) {
+        println!("reg_cp({:X}, {:X})", vx, vy);
+        self.registers[vx as usize] = self.registers[vy as usize];
+    }
+
+    fn reg_or(&mut self, vx: u8, vy: u8) {
+        println!("reg_or({:X}, {:X})", vx, vy);
+        self.registers[vx as usize] |= self.registers[vy as usize];
+    }
+
+    fn reg_and(&mut self, vx: u8, vy: u8) {
+        println!("reg_and({:X}, {:X})", vx, vy);
+        self.registers[vx as usize] &= self.registers[vy as usize];
+    }
+
+    fn vxor(&mut self, vx: u8, vy: u8) {
+        println!("vxor({:X}, {:X})", vx, vy);
+        self.registers[vx as usize] ^= self.registers[vy as usize];
+    }
+
+    fn reg_add(&mut self, vx: u8, vy: u8) {
+        println!("reg_add({:X}, {:X})", vx, vy);
+        let sum = (self.registers[vx as usize] + self.registers[vy as usize]) as u16;
+        if sum > 255 {
+            self.registers[0xF] = 1;
+        }
+
+        self.registers[vx as usize] = (sum & 0xFF) as u8;
+    }
+
+    fn reg_sub(&mut self, vx: u8, vy: u8) {
+        println!("reg_sub({:X}, {:X})", vx, vy);
+        if self.registers[vx as usize] > self.registers[vy as usize] {
+            self.registers[0xF] = 1;
+        }
+
+        self.registers[vx as usize] -= self.registers[vy as usize];
+    }
+
+    fn reg_shr(&mut self, vx: u8, vy: u8) {
+        println!("reg_shr({:X}, {:X})", vx, vy);
+        let lsb = self.registers[vx as usize] & 0b1;
+        self.registers[vx as usize] >>= 1;
+        self.registers[0xF] = lsb;
+    }
+
+    fn reg_sub_inv(&mut self, vx: u8, vy: u8) {
+        println!("reg_sub_inv({:X}, {:X})", vx, vy);
+        if self.registers[vx as usize] < self.registers[vy as usize] {
+            self.registers[0xF] = 1;
+        }
+        self.registers[vx as usize] = self.registers[vy as usize] - self.registers[vx as usize];
+    }
     
+    fn reg_shl(&mut self, vx: u8, vy: u8) {
+        println!("reg_shl({:X}, {:X})", vx, vy);
+        let msb = self.registers[vx as usize] & 0b10000000;
+        self.registers[vx as usize] <<= 1;
+        self.registers[0xF] = msb;
+    }
+
+    fn jne(&mut self, vx: u8, vy: u8) {
+        if self.registers[vx as usize] != self.registers[vy as usize] {
+            self.pc += 2;
+        }
+    }
+
+    fn jmp_v0(&mut self, val: u16) {
+        self.pc = val + self.registers[0] as u16;
+    }
+
+    fn vx_rand(&mut self, vx: u8, val: u8) {
+        self.registers[vx as usize] = Chip8::rand_byte() & val;
+    }
+
+    fn keydown(&mut self, vx: u8) {
+        if self.keypad[self.registers[vx as usize] as usize] {
+            self.pc += 2;
+        }
+    }
+
+    fn key_not_down(&mut self, vx: u8) {
+        if !self.keypad[self.registers[vx as usize] as usize] {
+            self.pc += 2;
+        }
+    }
+
+    fn get_delay(&mut self, vx: u8) {
+        self.registers[vx as usize] = self.delay_timer;
+    }
+
+    fn set_delay(&mut self, vx: u8) {
+        self.delay_timer = self.registers[vx as usize];
+    }
+
+    fn set_sound(&mut self, vx: u8) {
+        self.sound_timer = self.registers[vx as usize];
+    }
+
+    fn add_to_i(&mut self, vx: u8) {
+        self.index_register += self.registers[vx as usize] as u16;
+    }
+
+    fn set_sprite(&mut self, vx: u8) {
+        self.index_register = 0x50 + self.registers[vx as usize] as u16;
+    }
+
     fn draw(&mut self, x: u8, y: u8, height: u8) {
         println!("draw({}, {}, {})", x, y, height);
 
 
-        let x_pos: usize = self.registers[x as usize] as usize;
-        let y_pos: usize = self.registers[y as usize] as usize;
+        let x_pos = self.registers[x as usize] as usize;
+        let y_pos = self.registers[y as usize] as usize;
 
         println!("Pos: {}, {}", x_pos, y_pos);
 
@@ -173,6 +301,9 @@ async fn main() {
         println!("Instr: {:X}", (op & 0xF000) >> 12);
         println!("& 0xFFF: {:X}", op & 0x0FFF);
 
+        let vx = ((op & 0x0F00) >> 8) as u8;
+        let vy = ((op & 0x00F0) >> 4) as u8;
+
         match (op & 0xF000) >> 12 {
             0x0 => match op & 0x0FFF {
                 0x0E0 => chip8.cls(),
@@ -181,11 +312,40 @@ async fn main() {
             },
             0x1 => chip8.jmp(op & 0x0FFF),
             0x2 => chip8.call_sub(op & 0x0FFF),
-            0x3 => chip8.eq(((op & 0x0F00) >> 8) as u8, (op & 0x00FF) as u8),
-            0x6 => chip8.set_reg(((op & 0x0F00) >> 8) as u8, (op & 0x00FF) as u8),
-            0x7 => chip8.add_reg(((op & 0x0F00) >> 8) as u8, (op & 0x00FF) as u8),
+            0x3 => chip8.eq(vx, (op & 0x00FF) as u8),
+            0x4 => chip8.ne(vx, (op & 0x00FF) as u8),
+            0x5 => chip8.reg_eq(vx, vy),
+            0x6 => chip8.set_reg(vx, (op & 0x00FF) as u8),
+            0x7 => chip8.add_reg(vx, (op & 0x00FF) as u8),
+            0x8 => match op & 0x000F {
+                0x0 => chip8.reg_cp(vx, vy),
+                0x1 => chip8.reg_or(vx, vy),
+                0x2 => chip8.reg_and(vx, vy),
+                0x3 => chip8.vxor(vx, vy),
+                0x4 => chip8.reg_add(vx, vy),
+                0x5 => chip8.reg_sub(vx, vy),
+                0x6 => chip8.reg_shr(vx, vy),
+                0x7 => chip8.reg_sub_inv(vx, vy),
+                0xE => chip8.reg_shl(vx, vy),
+                _ => println!("Unknown opcode {:X}", op),
+            },
+            0x9 => chip8.jne(vx, vy),
             0xA => chip8.set_index(op & 0x0FFF),
-            0xD => chip8.draw(((op & 0x0F00) >> 8) as u8, ((op & 0x00F0) >> 4) as u8, (op & 0x000F) as u8),
+            0xB => chip8.jmp_v0(op & 0x0FFF),
+            0xC => chip8.vx_rand(vx, (op & 0x00FF) as u8),
+            0xD => chip8.draw(vx, vy, (op & 0x000F) as u8),
+            0xE => match op & 0x00FF {
+                0x9E => chip8.keydown(vx),
+                0xA1 => chip8.key_not_down(vx),
+                _ => panic!("Invalid opcode {:X}", op),
+            },
+            0xF => match op & 0x00FF {
+                0x07 => chip8.get_delay(vx),
+                0x15 => chip8.set_delay(vx),
+                0x18 => chip8.set_sound(vx),
+                0x1E => chip8.add_to_i(vx),
+                0x29 => chip8.set_sprite(vx),
+            }
             _ => println!("Unknown opcode: {:#X}", op),
         }
 
