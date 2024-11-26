@@ -245,6 +245,19 @@ impl Chip8 {
         self.index_register = 0x50 + self.registers[vx as usize] as u16;
     }
 
+    fn fill_mem(&mut self, vx: u8) {
+        for i in 0x0..=vx {
+            // self.registers[i as usize] = self.memory[self.index_register as usize + i as usize];
+            self.memory[self.index_register as usize + i as usize] = self.registers[i as usize];
+        }
+    }
+    
+    fn fill_reg(&mut self, vx: u8) {
+        for i in 0x0..=vx {
+            self.registers[i as usize] = self.memory[self.index_register as usize + i as usize];
+        }
+    }
+    
     fn draw(&mut self, x: u8, y: u8, height: u8) {
         println!("draw({}, {}, {})", x, y, height);
 
@@ -260,7 +273,7 @@ impl Chip8 {
             let row_bits = self.memory[self.index_register as usize + row];
             for col in 0..8 {
                 let pixel = row_bits >> (7 - col) & 0x1;
-                let screen_pixel = &mut self.display[x_pos + col][y_pos + row];
+                let screen_pixel = &mut self.display[(x_pos + col) % 64][(y_pos + row) % 32];
 
                 if pixel == 0xF {
                     if pixel == *screen_pixel as u8 {
@@ -293,7 +306,7 @@ async fn main() {
     let mut chip8 = Chip8::default();
 
     chip8.init_keymap();
-    chip8.load_rom("ibm_logo.ch8");
+    chip8.load_rom("trip8.ch8");
     
     loop {
         let op = chip8.fetch();
@@ -327,7 +340,7 @@ async fn main() {
                 0x6 => chip8.reg_shr(vx, vy),
                 0x7 => chip8.reg_sub_inv(vx, vy),
                 0xE => chip8.reg_shl(vx, vy),
-                _ => println!("Unknown opcode {:X}", op),
+                _ => panic!("Unknown opcode {:X}", op),
             },
             0x9 => chip8.jne(vx, vy),
             0xA => chip8.set_index(op & 0x0FFF),
@@ -345,8 +358,11 @@ async fn main() {
                 0x18 => chip8.set_sound(vx),
                 0x1E => chip8.add_to_i(vx),
                 0x29 => chip8.set_sprite(vx),
+                0x55 => chip8.fill_mem(vx),
+                0x65 => chip8.fill_reg(vx),
+                _ => panic!("Invalid opcode {:X}", op),
             }
-            _ => println!("Unknown opcode: {:#X}", op),
+            _ => panic!("Unknown opcode: {:#X}", op),
         }
 
 
